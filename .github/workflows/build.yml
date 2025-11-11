@@ -1,0 +1,64 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      ANDROID_SDK_ROOT: ${{ runner.temp }}/android-sdk
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential wget unzip git cmake pkg-config
+
+      - name: Setup Android commandline tools
+        run: |
+          mkdir -p $ANDROID_SDK_ROOT/cmdline-tools
+          wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -O /tmp/cmdline.zip
+          unzip -q /tmp/cmdline.zip -d $ANDROID_SDK_ROOT/cmdline-tools
+          mv $ANDROID_SDK_ROOT/cmdline-tools/cmdline-tools $ANDROID_SDK_ROOT/cmdline-tools/latest
+          yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --sdk_root=$ANDROID_SDK_ROOT "platform-tools" "platforms;android-33" "build-tools;33.0.0"
+
+      - name: Setup JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Build tinywl-ANativeWindow (native helper)
+        run: |
+          # clone the helper repo (README suggests using tinywl-ANativeWindow)
+          git clone --depth=1 https://github.com/Xtr126/tinywl-ANativeWindow.git /tmp/tinywl-ANativeWindow
+          cd /tmp/tinywl-ANativeWindow
+          make
+          # assume make produces libtinywl.so under build/ veya benzer bir yola; ayarla gerektiği gibi
+          # create jniLibs folders in app for common ABIs and copy
+          mkdir -p $GITHUB_WORKSPACE/app/src/main/jniLibs/arm64-v8a
+          cp build/libtinywl.so $GITHUB_WORKSPACE/app/src/main/jniLibs/arm64-v8a/libtinywl.so || true
+          # (uygulamaya göre 32-bit/diğer abi klasörlerini de ekle)
+
+      - name: Grant gradlew exec perms
+        run: chmod +x ./gradlew
+
+      - name: Compile AIDL (per README)
+        run: ./gradlew compileDebugAidl
+
+      - name: Assemble debug APK
+        run: ./gradlew assembleDebug --no-daemon
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wlroots-android-bridge-apk
+          path: app/build/outputs/apk/debug/*.apk
