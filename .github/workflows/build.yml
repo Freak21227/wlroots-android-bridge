@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1️⃣ Repo ve submodule'ları checkout et
+      # 1️⃣ Repo hjfjf ve submodule'ları checkout et
       - name: Checkout repository with submodules
         uses: actions/checkout@v4
         with:
